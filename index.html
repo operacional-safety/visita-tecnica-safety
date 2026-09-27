@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Safety Park Vistoria v7 (CRM Local)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2pdf Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        safetyRed: '#D32F2F',
+                        safetyDark: '#212121',
+                        safetyGray: '#BDBDBD',
+                        safetyLight: '#F5F5F5',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; display: flex; flex-direction: column; min-height: 100vh; }
+        main { flex: 1; }
+        /* Container invisível para renderização do PDF */
+        #pdf-hidden-container {
+            position: fixed;
+            top: 0;
+            left: -9999px;
+            z-index: -100;
+            width: 794px; /* Largura A4 padrão */
+        }
+        /* Regra para evitar quebra de página no meio de um bloco no PDF */
+        .keep-together { page-break-inside: avoid; }
+        .section-title { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #D32F2F; margin-bottom: 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+        
+        /* Custom Scrollbar for textareas and search dropdown */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #BDBDBD; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #D32F2F; }
+
+        /* Estilos do Dropdown de Busca */
+        #searchDropdown { max-height: 300px; overflow-y: auto; }
+        .search-item:hover { background-color: #f3f4f6; cursor: pointer; }
+    </style>
+</head>
+<body class="bg-safetyLight text-safetyDark" onload="initApp()">
+
+    <!-- HEADER E MENU RESPONSIVO -->
+    <header class="bg-safetyDark text-white shadow-lg sticky top-0 z-40 border-b-4 border-safetyRed">
+        <!-- Topo Principal -->
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div>
+                <h1 class="text-lg font-bold uppercase tracking-wider leading-tight">Safety Park</h1>
+                <p class="text-[10px] text-safetyGray">Vistoria CRM - Depto. Operacional</p>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Status Desk -->
+                <div class="hidden md:block text-right text-xs">
+                    <p class="font-semibold text-safetyGray">Depto. Operacional</p>
+                </div>
+                
+                <!-- Hamburger Button (Mobile) -->
+                <button onclick="toggleMenu()" class="md:hidden text-white focus:outline-none p-2 hover:bg-gray-800 rounded">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- BARRA DE FERRAMENTAS / MENU (Botões no Topo) -->
+        <div id="toolbarMenu" class="hidden md:block bg-gray-900 border-t border-gray-700 px-4 py-2">
+            <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-3">
+                
+                <!-- Buscador -->
+                <div class="relative w-full md:w-1/3 z-50">
+                    <div class="flex items-center bg-white rounded overflow-hidden">
+                        <span class="pl-2 text-gray-500">🔍</span>
+                        <input type="text" id="searchInput" onkeyup="handleSearch()" placeholder="Buscar unidade, rua ou bairro..." class="w-full p-2 text-sm text-black outline-none">
+                    </div>
+                    <!-- Dropdown Resultados -->
+                    <div id="searchDropdown" class="hidden absolute w-full mt-1 bg-white border border-gray-300 rounded shadow-xl z-50 text-black text-sm">
+                        <!-- Resultados injetados via JS -->
+                    </div>
+                </div>
+
+                <!-- Botões de Ação -->
+                <div class="flex flex-wrap justify-center gap-2 w-full md:w-auto">
+                    <button type="button" onclick="promptClearForm()" class="text-[10px] uppercase bg-safetyRed text-white px-3 py-2 rounded hover:bg-red-700 font-bold transition flex-1 md:flex-none">
+                        + Nova
+                    </button>
+                    <button type="button" id="btnSaveTop" onclick="saveData(true)" class="text-[10px] uppercase bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 font-bold transition flex-1 md:flex-none">
+                        💾 Salvar
+                    </button>
+                    <button type="button" id="btnPdfTop" onclick="generatePDF()" class="text-[10px] uppercase bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 font-bold transition flex-1 md:flex-none flex items-center justify-center gap-1">
+                        📄 Gerar PDF
+                        <svg id="pdfSpinner" class="hidden animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </button>
+                    <button type="button" onclick="exportJSON()" class="text-[10px] uppercase bg-gray-700 text-white px-3 py-2 rounded hover:bg-gray-600 font-bold transition flex-1 md:flex-none">
+                        ⬇️ Exp
+                    </button>
+                    <button type="button" onclick="document.getElementById('importJsonFile').click()" class="text-[10px] uppercase bg-gray-700 text-white px-3 py-2 rounded hover:bg-gray-600 font-bold transition flex-1 md:flex-none">
+                        ⬆️ Imp
+                    </button>
+                    <input type="file" id="importJsonFile" accept=".json" class="hidden" onchange="importJSON(event)">
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-3 md:p-6 max-w-4xl">
+
+        <section class="bg-white p-4 md:p-6 rounded shadow-md border-t-4 border-safetyRed mt-2">
+            <form id="visitForm" class="space-y-6">
+                
+                <!-- I. IDENTIFICAÇÃO E ENDEREÇO -->
+                <div>
+                    <h4 class="section-title">I. Identificação e Endereço</h4>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Nome do Empreendimento</label>
+                                <input type="text" id="unitName" onblur="updateFooterUI()" class="w-full p-2 border-2 border-gray-200 rounded bg-white focus:border-safetyRed outline-none font-bold text-sm uppercase">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">ID da Visita (Auto)</label>
+                                <input type="text" id="visitId" readonly class="w-full p-2 border border-gray-200 rounded bg-gray-100 text-gray-500 font-mono text-sm outline-none cursor-not-allowed">
+                            </div>
+                        </div>
+
+                        <!-- Novos Campos de Endereço -->
+                        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 bg-gray-50 p-3 rounded border border-gray-100">
+                            <div class="md:col-span-2">
+                                <label class="block text-[10px] font-bold mb-1 text-gray-500 uppercase">CEP</label>
+                                <input type="text" id="zipCode" class="w-full p-2 border rounded bg-white text-sm focus:border-safetyRed outline-none" placeholder="00000-000">
+                            </div>
+                            <div class="md:col-span-5">
+                                <label class="block text-[10px] font-bold mb-1 text-gray-500 uppercase">Rua / Avenida</label>
+                                <input type="text" id="street" class="w-full p-2 border rounded bg-white text-sm focus:border-safetyRed outline-none" placeholder="Logradouro principal">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-[10px] font-bold mb-1 text-gray-500 uppercase">Nº</label>
+                                <input type="text" id="number" class="w-full p-2 border rounded bg-white text-sm focus:border-safetyRed outline-none" placeholder="123">
+                            </div>
+                            <div class="md:col-span-3">
+                                <label class="block text-[10px] font-bold mb-1 text-gray-500 uppercase">Bairro</label>
+                                <input type="text" id="neighborhood" class="w-full p-2 border rounded bg-white text-sm focus:border-safetyRed outline-none" placeholder="Bairro">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Data da Visita</label>
+                                <input type="date" id="visitDate" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Horário de Func.</label>
+                                <input type="text" id="operatingHours" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Ex: 06h às 22h">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Líder do Estudo</label>
+                                <input type="text" id="leaderName" onblur="updateFooterUI()" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Seu Nome">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Contato no Local</label>
+                                <input type="text" id="localContact" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Nome / Telefone / Cargo">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- II. DADOS TÉCNICOS DA OPERAÇÃO -->
+                <div>
+                    <h4 class="section-title">II. Dados Técnicos da Operação e Engenharia</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        <div class="space-y-3 bg-gray-50 p-3 border border-gray-100 rounded">
+                            <h5 class="text-[10px] font-bold text-gray-500 uppercase">Geometria e Capacidade</h5>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700">Qtd. de Vagas Totais</label>
+                                <input type="text" id="totalSpaces" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 150 vagas">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700">Qtd. Vagas Presas no Pátio</label>
+                                <input type="text" id="blockedSpaces" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 25 vagas engavetadas">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700">Superlotação Possível (Valet)</label>
+                                <input type="text" id="valetCapacity" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Capacidade extra c/ manobrista">
+                            </div>
+                        </div>
+
+                        <div class="space-y-3 bg-gray-50 p-3 border border-gray-100 rounded">
+                            <h5 class="text-[10px] font-bold text-gray-500 uppercase">Vias e Acessos</h5>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700">Padrão/Qtd. de Acessos</label>
+                                <textarea id="accessPatterns" rows="1" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 1 Entrada, 2 Saídas indep."></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[11px] font-bold mb-1 text-gray-700">Altura Acesso</label>
+                                    <input type="text" id="controlHeight" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 2.10m">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold mb-1 text-gray-700">Largura Acesso</label>
+                                    <input type="text" id="controlWidth" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 3.50m">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[11px] font-bold mb-1 text-gray-700">Pé Direito Coberto</label>
+                                    <input type="text" id="ceilingHeight" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 2.40m">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold mb-1 text-gray-700">Comp. dos Acessos</label>
+                                    <input type="text" id="accessLength" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 15m reta">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 p-3 border border-gray-100 rounded mt-[-10px]">
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700">Espaço Rua x Calçada x Entrada</label>
+                                <input type="text" id="streetDistance" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Distância de recuo em metros">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold mb-1 text-gray-700">Vel. Média Via de Aproximação</label>
+                                <input type="text" id="approachSpeed" class="w-full p-2 border rounded bg-white text-sm outline-none focus:border-safetyRed" placeholder="Ex: 60 km/h (Via Rápida)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- III. POTENCIAL E PARCERIAS -->
+                <div>
+                    <h4 class="section-title">III. Potencial, Operação e Parcerias</h4>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Atrativos (Polos Geradores)</label>
+                                <textarea id="attractions" rows="2" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Hospitais, shoppings no entorno..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Direito de Uso / Credenciados</label>
+                                <textarea id="rightOfUse" rows="2" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Mensalistas, diretores, moradores..."></textarea>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Convênios Existentes/Possíveis</label>
+                                <textarea id="agreements" rows="2" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Lojas parceiras..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Tecnologia de Acesso (Sist.)</label>
+                                <textarea id="accessType" rows="2" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Marca de cancelas, software..."></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Nº de Colaboradores Existentes</label>
+                            <input type="text" id="employeeCount" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Ex: 4 operadores, 1 caixa">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IV. PRECIFICAÇÃO E CONCORRÊNCIA -->
+                <div>
+                    <h4 class="section-title">IV. Precificação e Concorrência</h4>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Tabela de Preço Atual</label>
+                                <textarea id="priceTable" rows="3" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Valores praticados hoje..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Tabela de Preço Proposta</label>
+                                <textarea id="proposedPrice" rows="3" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Valores sugeridos pela Safety Park..."></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Tabelas das Concorrências (Entorno)</label>
+                            <textarea id="competitorPrice" rows="2" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Ex: Estacionamento ao lado cobra R$ 15,00/h..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- V. VIABILIDADE -->
+                <div>
+                    <h4 class="section-title">V. Viabilidade</h4>
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-gray-700 uppercase">Observações Gerais / Infraestrutura</label>
+                        <textarea id="observations" rows="3" class="w-full p-2 border rounded bg-gray-50 text-sm focus:border-safetyRed outline-none" placeholder="Necessidades de reforma, estado geral, restrições operacionais..."></textarea>
+                    </div>
+                </div>
+
+                <!-- VI. FOTOS DINÂMICAS -->
+                <div>
+                    <div class="flex justify-between items-end mb-2 border-b border-gray-200 pb-1">
+                        <h4 class="section-title border-none mb-0 pb-0">VI. Registro Fotográfico</h4>
+                        <button type="button" onclick="document.getElementById('photoInputDynamic').click()" class="bg-gray-800 text-white text-[10px] uppercase font-bold px-3 py-1 rounded shadow hover:bg-black transition">
+                            + Adicionar Foto(s)
+                        </button>
+                    </div>
+                    
+                    <input type="file" id="photoInputDynamic" accept="image/*" multiple onchange="processDynamicPhotos(event)" class="hidden">
+                    
+                    <div id="dynamicPhotoGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                        <!-- Fotos injetadas via JS -->
+                    </div>
+                    <p id="noPhotosLabel" class="text-xs text-gray-400 italic mt-2">Nenhuma foto adicionada.</p>
+                </div>
+
+            </form>
+        </section>
+    </main>
+
+    <!-- UI FOOTER (Auto-completável) -->
+    <footer class="bg-safetyDark text-white pt-6 pb-4 mt-auto border-t-4 border-safetyRed">
+        <div class="container mx-auto px-4 text-center">
+            <div class="text-xs text-gray-400 mb-2 flex flex-col md:flex-row justify-center items-center gap-1 md:gap-4">
+                <span><strong class="text-white">Empreendimento:</strong> <span id="footerUnitName">--</span></span>
+                <span class="hidden md:inline">|</span>
+                <span><strong class="text-white">Líder:</strong> <span id="footerLeaderName">--</span></span>
+                <span class="hidden md:inline">|</span>
+                <span><strong class="text-white">Última Atualização:</strong> <span id="footerDate">--</span></span>
+            </div>
+            <p class="font-bold text-[11px] tracking-widest text-safetyRed uppercase mt-4">
+                Departamento Operacional - Safety Park - Setor de Desenvolvimento
+            </p>
+        </div>
+    </footer>
+
+    <!-- MODAL CUSTOMIZADO (Substitui Alert) -->
+    <div id="customModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded shadow-2xl w-11/12 max-w-md border-t-4 border-safetyRed transform transition-all scale-95 opacity-0" id="customModalContent">
+            <div class="p-5">
+                <h3 id="modalTitle" class="text-lg font-bold text-gray-900 mb-2 uppercase tracking-wide">Atenção</h3>
+                <p id="modalMessage" class="text-sm text-gray-600 mb-6">Mensagem</p>
+                <div class="flex justify-end gap-3" id="modalActions">
+                    <!-- Botões injetados -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEMPLATE DO PDF -->
+    <div id="pdf-hidden-container">
+        <div id="pdf-template" class="bg-white p-8 font-sans text-gray-800 flex flex-col min-h-[1080px]" style="font-size: 11px; line-height: 1.3;">
+            
+            <!-- HEADER PDF -->
+            <div class="keep-together bg-safetyDark text-white p-4 text-center mb-4 border-b-4 border-safetyRed relative">
+                <h1 class="text-xl font-bold m-0 uppercase tracking-wider">Estudo de Viabilidade Técnica</h1>
+                <p class="mt-1 text-xs text-gray-300">Safety Park Estacionamentos</p>
+                <div class="absolute top-2 right-4 text-right text-[8px] text-gray-400">
+                    <p>ID da Vistoria:</p>
+                    <p id="pdfVisitId" class="font-mono text-white"></p>
+                </div>
+            </div>
+            
+            <!-- CORPO PDF -->
+            <div class="flex-grow">
+                <!-- 1. IDENTIFICAÇÃO -->
+                <div class="keep-together mb-4">
+                    <h2 id="pdfUnitName" class="text-lg font-bold text-safetyRed pb-1 border-b border-gray-300 mb-2 uppercase"></h2>
+                    <table class="w-full border-collapse text-[10px]">
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-100 border border-gray-300 w-[15%]">Endereço:</td>
+                            <td class="p-1 border border-gray-300 w-[85%]" colspan="3" id="pdfAddress"></td>
+                        </tr>
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-100 border border-gray-300 w-[15%]">Data Visita:</td>
+                            <td class="p-1 border border-gray-300 w-[35%]" id="pdfDate"></td>
+                            <td class="p-1 font-bold bg-gray-100 border border-gray-300 w-[15%]">Líder:</td>
+                            <td class="p-1 border border-gray-300 w-[35%]" id="pdfLeader"></td>
+                        </tr>
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-100 border border-gray-300">Horário Func.:</td>
+                            <td class="p-1 border border-gray-300" id="pdfHours"></td>
+                            <td class="p-1 font-bold bg-gray-100 border border-gray-300">Contato:</td>
+                            <td class="p-1 border border-gray-300" id="pdfContact"></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- 2. DADOS TÉCNICOS -->
+                <div class="keep-together mb-3">
+                    <h3 class="bg-gray-800 text-white p-1 font-bold text-[10px] uppercase">Dados Técnicos e Engenharia</h3>
+                    <table class="w-full border-collapse text-[9px] border-x border-b border-gray-300">
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300 w-[16%]">Vagas Totais:</td>
+                            <td class="p-1 border border-gray-300 w-[17%]" id="pdfTotalSpaces"></td>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300 w-[16%]">Vagas Presas:</td>
+                            <td class="p-1 border border-gray-300 w-[17%]" id="pdfBlockedSpaces"></td>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300 w-[17%]">Valet (Superlot.):</td>
+                            <td class="p-1 border border-gray-300 w-[17%]" id="pdfValetCapacity"></td>
+                        </tr>
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300">Acessos (Qtd):</td>
+                            <td class="p-1 border border-gray-300 whitespace-pre-wrap" colspan="5" id="pdfAccessPatterns"></td>
+                        </tr>
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300">Dimensões Acesso:</td>
+                            <td class="p-1 border border-gray-300" colspan="2">Alt: <span id="pdfControlHeight"></span> | Larg: <span id="pdfControlWidth"></span></td>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300" colspan="2">Pé Direito / Comp. Acesso:</td>
+                            <td class="p-1 border border-gray-300" colspan="1"><span id="pdfCeilingHeight"></span> | <span id="pdfAccessLength"></span></td>
+                        </tr>
+                        <tr>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300">Dist. Rua-Entrada:</td>
+                            <td class="p-1 border border-gray-300" colspan="2" id="pdfStreetDistance"></td>
+                            <td class="p-1 font-bold bg-gray-50 border border-gray-300" colspan="2">Vel. Via Aprox.:</td>
+                            <td class="p-1 border border-gray-300" colspan="1" id="pdfApproachSpeed"></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- 3. POTENCIAL E PARCERIAS -->
+                <div class="keep-together mb-3">
+                    <h3 class="bg-gray-800 text-white p-1 font-bold text-[10px] uppercase">Potencial, Operação e Parcerias</h3>
+                    <table class="w-full border-collapse text-[9px] border-x border-b border-gray-300">
+                        <tr><td class="p-1 font-bold bg-gray-50 border-b border-gray-300 w-[20%] align-top">Atrativos:</td><td class="p-1 border-b border-gray-300 whitespace-pre-wrap" id="pdfAttractions"></td></tr>
+                        <tr><td class="p-1 font-bold bg-gray-50 border-b border-gray-300 align-top">Direito de Uso:</td><td class="p-1 border-b border-gray-300 whitespace-pre-wrap" id="pdfRightOfUse"></td></tr>
+                        <tr><td class="p-1 font-bold bg-gray-50 border-b border-gray-300 align-top">Convênios:</td><td class="p-1 border-b border-gray-300 whitespace-pre-wrap" id="pdfAgreements"></td></tr>
+                        <tr><td class="p-1 font-bold bg-gray-50 border-b border-gray-300 align-top">Sist. Acesso:</td><td class="p-1 border-b border-gray-300 whitespace-pre-wrap" id="pdfAccessType"></td></tr>
+                        <tr><td class="p-1 font-bold bg-gray-50 align-top">Colaboradores:</td><td class="p-1 whitespace-pre-wrap" id="pdfEmployees"></td></tr>
+                    </table>
+                </div>
+
+                <!-- 4. PRECIFICAÇÃO -->
+                <div class="keep-together mb-3">
+                    <h3 class="bg-safetyRed text-white p-1 font-bold text-[10px] uppercase">Análise Comercial e Precificação</h3>
+                    <table class="w-full border-collapse text-[9px] border-x border-b border-gray-300">
+                        <tr><td class="p-1 font-bold bg-gray-50 border-b border-gray-300 w-[20%] align-top">Tabela Atual:</td><td class="p-1 border-b border-gray-300 whitespace-pre-wrap" id="pdfPrice"></td></tr>
+                        <tr><td class="p-1 font-bold bg-gray-50 border-b border-gray-300 align-top">Tabela Proposta:</td><td class="p-1 border-b border-gray-300 whitespace-pre-wrap" id="pdfProposedPrice"></td></tr>
+                        <tr><td class="p-1 font-bold bg-gray-50 align-top">Concorrência:</td><td class="p-1 whitespace-pre-wrap" id="pdfCompetitor"></td></tr>
+                    </table>
+                </div>
+
+                <!-- 5. OBSERVAÇÕES -->
+                <div class="keep-together mb-4">
+                    <h3 class="bg-safetyDark text-white p-1 font-bold text-[10px] uppercase">Viabilidade / Infraestrutura</h3>
+                    <div id="pdfObs" class="p-2 border border-gray-300 bg-gray-50 text-[10px] whitespace-pre-wrap text-justify"></div>
+                </div>
+
+                <!-- 6. FOTOS -->
+                <div class="keep-together">
+                    <h3 class="bg-gray-800 text-white p-1 font-bold text-[10px] uppercase mb-2">Anexo Fotográfico</h3>
+                    <div id="pdfPhotos" class="grid grid-cols-2 gap-2"></div>
+                </div>
+            </div>
+            
+            <!-- FOOTER PDF (Auto-completável) -->
+            <div class="mt-4 pt-2 border-t-2 border-safetyRed text-center text-[9px] text-gray-700">
+                <p>Empreendimento: <span id="pdfFooterUnit" class="font-bold"></span> | Líder: <span id="pdfFooterLeader" class="font-bold"></span> | Emitido em: <span id="pdfFooterDate" class="font-bold"></span></p>
+                <p class="font-bold text-[10px] mt-1 text-safetyDark">DEPARTAMENTO OPERACIONAL - SAFETY PARK - SETOR DE DESENVOLVIMENTO</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- VARIÁVEIS GLOBAIS (O "BANCO DE DADOS") ---
+        const DB_KEY = 'safety_visits_db';
+        let visitsDB = []; // Array de objetos de visita
+        let currentVisitId = null;
+        let dynamicPhotos = [];
+
+        // --- SISTEMA DE MODAL (Substitui Alerts) ---
+        function showModal(title, message, type = 'alert', onConfirm = null) {
+            const modal = document.getElementById('customModal');
+            const content = document.getElementById('customModalContent');
+            
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            
+            const actions = document.getElementById('modalActions');
+            actions.innerHTML = '';
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = "px-4 py-2 bg-gray-200 text-gray-800 text-xs rounded hover:bg-gray-300 font-bold uppercase";
+            closeBtn.innerText = type === 'confirm' ? 'Cancelar' : 'OK';
+            closeBtn.onclick = () => closeModal();
+            actions.appendChild(closeBtn);
+
+            if(type === 'confirm') {
+                const confirmBtn = document.createElement('button');
+                confirmBtn.className = "px-4 py-2 bg-safetyRed text-white text-xs rounded hover:bg-red-700 font-bold uppercase";
+                confirmBtn.innerText = 'Confirmar';
+                confirmBtn.onclick = () => { closeModal(); if(onConfirm) onConfirm(); };
+                actions.appendChild(confirmBtn);
+            }
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('customModal');
+            const content = document.getElementById('customModalContent');
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        // --- MENU MOBILE ---
+        function toggleMenu() {
+            const menu = document.getElementById('toolbarMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        // --- INICIALIZAÇÃO ---
+        function generateId() {
+            return 'SP-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
+        }
+
+        function initApp() {
+            const savedDb = localStorage.getItem(DB_KEY);
+            if (savedDb) {
+                try { visitsDB = JSON.parse(savedDb); } catch(e) { visitsDB = []; }
+            }
+            // Se houver visitas, carrega a última editada. Senão, cria uma nova.
+            if(visitsDB.length > 0) {
+                // Ordena por data de atualização descrescente e pega a primeira
+                visitsDB.sort((a,b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
+                loadVisitIntoForm(visitsDB[0].visitId);
+            } else {
+                setupNewVisit();
+            }
+            updateFooterUI();
+            
+            // Listener para cliques fora do dropdown de busca
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('searchDropdown');
+                const searchInput = document.getElementById('searchInput');
+                if (!searchInput.contains(event.target) && !dropdown.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        function setupNewVisit() {
+            document.getElementById('visitForm').reset();
+            currentVisitId = generateId();
+            document.getElementById('visitId').value = currentVisitId;
+            document.getElementById('visitDate').valueAsDate = new Date();
+            document.getElementById('leaderName').value = 'Jorge'; // Pode ser alterado pelo usuário
+            dynamicPhotos = [];
+            renderDynamicPhotos();
+            updateFooterUI();
+        }
+
+        function promptClearForm() {
+            showModal("Nova Visita", "Deseja iniciar uma nova vistoria? Certifique-se de que a atual está salva.", "confirm", () => {
+                setupNewVisit();
+                if(window.innerWidth < 768) toggleMenu(); // Esconde menu no mobile
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                showModal("Pronto", "Formulário preparado para nova vistoria.", "alert");
+            });
+        }
+
+        // --- COMPRESSÃO E FOTOS DINÂMICAS ---
+        function compressImage(file, callback) {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = event => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const maxWidth = 800; // Resolução otimizada para evitar crash do localStorage
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    callback(canvas.toDataURL('image/jpeg', 0.65));
+                }
+            }
+        }
+
+        function processDynamicPhotos(event) {
+            const files = event.target.files;
+            if(!files || files.length === 0) return;
+
+            showModal("Aguarde", `Processando ${files.length} foto(s)...`, "alert");
+            let processedCount = 0;
+            
+            Array.from(files).forEach(file => {
+                compressImage(file, (base64) => {
+                    dynamicPhotos.push(base64);
+                    processedCount++;
+                    if(processedCount === files.length) {
+                        renderDynamicPhotos();
+                        saveData(false); // Auto-save silenciado
+                        closeModal();
+                    }
+                });
+            });
+            event.target.value = '';
+        }
+
+        function removeDynamicPhoto(index) {
+            showModal("Excluir Foto", "Remover esta imagem do relatório?", "confirm", () => {
+                dynamicPhotos.splice(index, 1);
+                renderDynamicPhotos();
+                saveData(false);
+            });
+        }
+
+        function renderDynamicPhotos() {
+            const grid = document.getElementById('dynamicPhotoGrid');
+            const label = document.getElementById('noPhotosLabel');
+            grid.innerHTML = '';
+            
+            if(dynamicPhotos.length === 0) {
+                label.style.display = 'block';
+            } else {
+                label.style.display = 'none';
+                dynamicPhotos.forEach((photoData, index) => {
+                    const slot = document.createElement('div');
+                    slot.className = "relative h-24 bg-gray-800 border-2 border-safetyRed rounded overflow-hidden group";
+                    slot.innerHTML = `
+                        <img src="${photoData}" class="w-full h-full object-cover">
+                        <button type="button" onclick="removeDynamicPhoto(${index})" class="absolute top-1 right-1 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-lg transform transition hover:scale-110">X</button>
+                        <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-[9px] px-1 text-center truncate">Foto ${index+1}</div>
+                    `;
+                    grid.appendChild(slot);
+                });
+            }
+        }
+
+        // --- LÓGICA DO BANCO DE DADOS (CRUD) ---
+        function getFormData() {
+            return {
+                visitId: document.getElementById('visitId').value,
+                unitName: document.getElementById('unitName').value,
+                
+                // Endereço
+                zipCode: document.getElementById('zipCode').value,
+                street: document.getElementById('street').value,
+                number: document.getElementById('number').value,
+                neighborhood: document.getElementById('neighborhood').value,
+
+                visitDate: document.getElementById('visitDate').value,
+                operatingHours: document.getElementById('operatingHours').value,
+                leaderName: document.getElementById('leaderName').value,
+                localContact: document.getElementById('localContact').value,
+                
+                // Tech
+                totalSpaces: document.getElementById('totalSpaces').value,
+                blockedSpaces: document.getElementById('blockedSpaces').value,
+                valetCapacity: document.getElementById('valetCapacity').value,
+                accessPatterns: document.getElementById('accessPatterns').value,
+                controlHeight: document.getElementById('controlHeight').value,
+                controlWidth: document.getElementById('controlWidth').value,
+                ceilingHeight: document.getElementById('ceilingHeight').value,
+                accessLength: document.getElementById('accessLength').value,
+                streetDistance: document.getElementById('streetDistance').value,
+                approachSpeed: document.getElementById('approachSpeed').value,
+
+                // Biz
+                attractions: document.getElementById('attractions').value,
+                rightOfUse: document.getElementById('rightOfUse').value,
+                agreements: document.getElementById('agreements').value,
+                accessType: document.getElementById('accessType').value,
+                employeeCount: document.getElementById('employeeCount').value,
+                
+                // Price & Obs
+                priceTable: document.getElementById('priceTable').value,
+                proposedPrice: document.getElementById('proposedPrice').value,
+                competitorPrice: document.getElementById('competitorPrice').value,
+                observations: document.getElementById('observations').value,
+                
+                photos: dynamicPhotos,
+                lastUpdate: new Date().toISOString()
+            };
+        }
+
+        function saveData(showFeedback = true) {
+            const data = getFormData();
+            if(!data.visitId) data.visitId = generateId(); // Safety check
+            currentVisitId = data.visitId;
+
+            // Busca se já existe
+            const existingIndex = visitsDB.findIndex(v => v.visitId === currentVisitId);
+            if (existingIndex >= 0) {
+                visitsDB[existingIndex] = data; // Atualiza
+            } else {
+                visitsDB.push(data); // Insere novo
+            }
+
+            // Salva array no LocalStorage
+            try {
+                localStorage.setItem(DB_KEY, JSON.stringify(visitsDB));
+            } catch(e) {
+                if(e.name === 'QuotaExceededError') {
+                    showModal("Erro de Memória", "O armazenamento local está cheio (provavelmente devido a muitas fotos em várias visitas). Exporte os backups antigos e apague do navegador.", "alert");
+                    return;
+                }
+            }
+            
+            updateFooterUI();
+
+            if(showFeedback) {
+                if(window.innerWidth < 768) toggleMenu(); // recolhe menu no mobile
+                showModal("Salvo", "Vistoria gravada com sucesso no banco de dados local.", "alert");
+            }
+        }
+
+        function loadVisitIntoForm(id) {
+            const data = visitsDB.find(v => v.visitId === id);
+            if(!data) return;
+
+            currentVisitId = data.visitId;
+            document.getElementById('visitId').value = data.visitId;
+            document.getElementById('unitName').value = data.unitName || '';
+            
+            // Address
+            document.getElementById('zipCode').value = data.zipCode || '';
+            document.getElementById('street').value = data.street || '';
+            document.getElementById('number').value = data.number || '';
+            document.getElementById('neighborhood').value = data.neighborhood || '';
+
+            document.getElementById('visitDate').value = data.visitDate || '';
+            document.getElementById('operatingHours').value = data.operatingHours || '';
+            document.getElementById('leaderName').value = data.leaderName || '';
+            document.getElementById('localContact').value = data.localContact || '';
+            
+            // Tech
+            document.getElementById('totalSpaces').value = data.totalSpaces || '';
+            document.getElementById('blockedSpaces').value = data.blockedSpaces || '';
+            document.getElementById('valetCapacity').value = data.valetCapacity || '';
+            document.getElementById('accessPatterns').value = data.accessPatterns || '';
+            document.getElementById('controlHeight').value = data.controlHeight || '';
+            document.getElementById('controlWidth').value = data.controlWidth || '';
+            document.getElementById('ceilingHeight').value = data.ceilingHeight || '';
+            document.getElementById('accessLength').value = data.accessLength || '';
+            document.getElementById('streetDistance').value = data.streetDistance || '';
+            document.getElementById('approachSpeed').value = data.approachSpeed || '';
+
+            // Biz
+            document.getElementById('attractions').value = data.attractions || '';
+            document.getElementById('rightOfUse').value = data.rightOfUse || '';
+            document.getElementById('agreements').value = data.agreements || '';
+            document.getElementById('accessType').value = data.accessType || '';
+            document.getElementById('employeeCount').value = data.employeeCount || '';
+            
+            // Price & Obs
+            document.getElementById('priceTable').value = data.priceTable || '';
+            document.getElementById('proposedPrice').value = data.proposedPrice || '';
+            document.getElementById('competitorPrice').value = data.competitorPrice || '';
+            document.getElementById('observations').value = data.observations || '';
+            
+            dynamicPhotos = data.photos && Array.isArray(data.photos) ? data.photos : [];
+            renderDynamicPhotos();
+            updateFooterUI();
+        }
+
+        // --- SISTEMA DE BUSCA ---
+        function handleSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const dropdown = document.getElementById('searchDropdown');
+            dropdown.innerHTML = '';
+
+            if (query.length < 2) {
+                dropdown.classList.add('hidden');
+                return;
+            }
+
+            const results = visitsDB.filter(v => {
+                const name = (v.unitName || '').toLowerCase();
+                const street = (v.street || '').toLowerCase();
+                const neighborhood = (v.neighborhood || '').toLowerCase();
+                return name.includes(query) || street.includes(query) || neighborhood.includes(query);
+            });
+
+            if(results.length > 0) {
+                results.forEach(v => {
+                    const div = document.createElement('div');
+                    div.className = "search-item p-2 border-b border-gray-100";
+                    div.innerHTML = `<strong>${v.unitName || 'Sem Nome'}</strong><br><span class="text-xs text-gray-500">${v.street || ''}, ${v.neighborhood || ''}</span>`;
+                    div.onclick = () => {
+                        loadVisitIntoForm(v.visitId);
+                        dropdown.classList.add('hidden');
+                        document.getElementById('searchInput').value = '';
+                        if(window.innerWidth < 768) toggleMenu();
+                    };
+                    dropdown.appendChild(div);
+                });
+            } else {
+                dropdown.innerHTML = `<div class="p-2 text-gray-500 text-xs italic">Nenhuma visita encontrada.</div>`;
+            }
+            dropdown.classList.remove('hidden');
+        }
+
+        // --- ATUALIZAÇÃO DE UI (FOOTER) ---
+        function updateFooterUI() {
+            const unit = document.getElementById('unitName').value || '--';
+            const leader = document.getElementById('leaderName').value || '--';
+            const dateStr = new Date().toLocaleString('pt-BR');
+            
+            document.getElementById('footerUnitName').innerText = unit;
+            document.getElementById('footerLeaderName').innerText = leader;
+            document.getElementById('footerDate').innerText = dateStr;
+        }
+
+        // --- IMPORT / EXPORT JSON (BACKUP TOTAL DO DB) ---
+        function exportJSON() {
+            saveData(false); // Garante que a atual tá salva
+            if(visitsDB.length === 0) return showModal("Erro", "Nenhum dado para exportar.", "alert");
+            
+            const fileName = `SafetyPark_BKP_Completo_${new Date().getTime()}.json`;
+            const blob = new Blob([JSON.stringify(visitsDB)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            if(window.innerWidth < 768) toggleMenu();
+        }
+
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedDB = JSON.parse(e.target.result);
+                    if(Array.isArray(importedDB) && importedDB.length > 0 && importedDB[0].visitId) {
+                        // Mesclar bases (evitando duplicatas pelo ID)
+                        let newCount = 0;
+                        importedDB.forEach(importedVisit => {
+                            const exists = visitsDB.findIndex(v => v.visitId === importedVisit.visitId);
+                            if(exists >= 0) {
+                                // Se a importada for mais recente, atualiza (opcional, aqui vou forçar update)
+                                visitsDB[exists] = importedVisit;
+                            } else {
+                                visitsDB.push(importedVisit);
+                                newCount++;
+                            }
+                        });
+                        localStorage.setItem(DB_KEY, JSON.stringify(visitsDB));
+                        loadVisitIntoForm(visitsDB[visitsDB.length-1].visitId); // carrega a última
+                        showModal("Sucesso", `Backup importado. ${newCount} novas visitas adicionadas.`, "alert");
+                    } else {
+                        showModal("Erro", "Arquivo inválido ou corrompido.", "alert");
+                    }
+                } catch(err) {
+                    showModal("Erro", "Falha ao ler o arquivo JSON.", "alert");
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // Reset
+            if(window.innerWidth < 768) toggleMenu();
+        }
+
+        // --- GERADOR DE PDF VETORIAL ---
+        function generatePDF() {
+            saveData(false); // Auto-save antes de gerar
+            const unitName = document.getElementById('unitName').value.trim();
+            if (!unitName) {
+                showModal("Atenção", "O Nome do Empreendimento é obrigatório.", "alert");
+                return;
+            }
+
+            const btnPdfTop = document.getElementById('btnPdfTop');
+            const spinner = document.getElementById('pdfSpinner');
+            if(window.innerWidth < 768) toggleMenu();
+            
+            // Visual feedback
+            spinner.classList.remove('hidden');
+
+            const f = (id) => document.getElementById(id).value || "N/A";
+
+            // Headers
+            document.getElementById('pdfVisitId').innerText = document.getElementById('visitId').value;
+            document.getElementById('pdfUnitName').innerText = unitName;
+            
+            // Montar Endereço PDF
+            const street = f('street') !== 'N/A' ? f('street') : '';
+            const num = f('number') !== 'N/A' ? `, Nº ${f('number')}` : '';
+            const neigh = f('neighborhood') !== 'N/A' ? ` - ${f('neighborhood')}` : '';
+            const zip = f('zipCode') !== 'N/A' ? ` (CEP: ${f('zipCode')})` : '';
+            const fullAddress = `${street}${num}${neigh}${zip}`;
+            document.getElementById('pdfAddress').innerText = fullAddress.length > 5 ? fullAddress : "Não informado";
+
+            const rawDate = document.getElementById('visitDate').value;
+            document.getElementById('pdfDate').innerText = rawDate ? rawDate.split('-').reverse().join('/') : "N/A";
+            document.getElementById('pdfHours').innerText = f('operatingHours');
+            document.getElementById('pdfLeader').innerText = f('leaderName');
+            document.getElementById('pdfContact').innerText = f('localContact');
+            
+            // Tech
+            document.getElementById('pdfTotalSpaces').innerText = f('totalSpaces');
+            document.getElementById('pdfBlockedSpaces').innerText = f('blockedSpaces');
+            document.getElementById('pdfValetCapacity').innerText = f('valetCapacity');
+            document.getElementById('pdfAccessPatterns').innerText = f('accessPatterns');
+            document.getElementById('pdfControlHeight').innerText = f('controlHeight');
+            document.getElementById('pdfControlWidth').innerText = f('controlWidth');
+            document.getElementById('pdfCeilingHeight').innerText = f('ceilingHeight');
+            document.getElementById('pdfAccessLength').innerText = f('accessLength');
+            document.getElementById('pdfStreetDistance').innerText = f('streetDistance');
+            document.getElementById('pdfApproachSpeed').innerText = f('approachSpeed');
+
+            // Biz
+            document.getElementById('pdfAttractions').innerText = f('attractions');
+            document.getElementById('pdfRightOfUse').innerText = f('rightOfUse');
+            document.getElementById('pdfAgreements').innerText = f('agreements');
+            document.getElementById('pdfAccessType').innerText = f('accessType');
+            document.getElementById('pdfEmployees').innerText = f('employeeCount');
+            
+            // Pricing
+            document.getElementById('pdfPrice').innerText = f('priceTable');
+            document.getElementById('pdfProposedPrice').innerText = f('proposedPrice');
+            document.getElementById('pdfCompetitor').innerText = f('competitorPrice');
+            document.getElementById('pdfObs').innerText = f('observations');
+
+            // Rodapé Automático PDF
+            document.getElementById('pdfFooterUnit').innerText = unitName;
+            document.getElementById('pdfFooterLeader').innerText = f('leaderName') !== 'N/A' ? f('leaderName') : "Safety Park";
+            document.getElementById('pdfFooterDate').innerText = new Date().toLocaleString('pt-BR');
+
+            // Fotos PDF
+            const pdfPhotosDiv = document.getElementById('pdfPhotos');
+            pdfPhotosDiv.innerHTML = '';
+            
+            if(dynamicPhotos.length === 0) {
+                pdfPhotosDiv.innerHTML = '<p class="col-span-2 text-gray-500 italic text-center p-2 border border-dashed border-gray-300">Sem imagens anexadas.</p>';
+            } else {
+                dynamicPhotos.forEach(photoData => {
+                    const img = document.createElement('img');
+                    img.src = photoData;
+                    img.style.width = "100%";
+                    img.style.height = "160px";
+                    img.style.objectFit = "cover";
+                    img.style.border = "1px solid #999";
+                    img.className = "keep-together mb-2 rounded-sm";
+                    pdfPhotosDiv.appendChild(img);
+                });
+            }
+
+            const element = document.getElementById('pdf-template');
+            const safeFileName = unitName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            
+            setTimeout(() => {
+                const opt = {
+                    margin:       [8, 10, 10, 10],
+                    filename:     `SP_Vistoria_${safeFileName}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.90 },
+                    html2canvas:  { scale: 2, useCORS: true, scrollY: 0 },
+                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+                };
+
+                html2pdf().set(opt).from(element).save().then(() => {
+                    spinner.classList.add('hidden');
+                }).catch(err => {
+                    showModal("Erro", "Ocorreu um erro na geração do PDF.", "alert");
+                    spinner.classList.add('hidden');
+                });
+            }, 600);
+        }
+    </script>
+</body>
+</html>
