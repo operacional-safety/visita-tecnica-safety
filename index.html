@@ -301,19 +301,14 @@
 
                 <!-- VI. FOTOS DINÂMICAS -->
                 <div>
-                    <div class="flex justify-between items-end mb-2 border-b border-gray-200 pb-1">
-                        <h4 class="section-title border-none mb-0 pb-0">VI. Registro Fotográfico</h4>
-                        <button type="button" onclick="document.getElementById('photoInputDynamic').click()" class="bg-gray-800 text-white text-[10px] uppercase font-bold px-3 py-1 rounded shadow hover:bg-black transition">
-                            + Adicionar Foto(s)
-                        </button>
-                    </div>
+                    <h4 class="section-title border-none mb-0 pb-0">VI. Registro Fotográfico</h4>
+                    <p class="text-[10px] text-gray-500 mb-2 mt-1">Fotos são salvas automaticamente. Adicione quantas forem necessárias para o relatório.</p>
                     
                     <input type="file" id="photoInputDynamic" accept="image/*" multiple onchange="processDynamicPhotos(event)" class="hidden">
                     
-                    <div id="dynamicPhotoGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                        <!-- Fotos injetadas via JS -->
+                    <div id="dynamicPhotoGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+                        <!-- Fotos e botão lateral injetados via JS -->
                     </div>
-                    <p id="noPhotosLabel" class="text-xs text-gray-400 italic mt-2">Nenhuma foto adicionada.</p>
                 </div>
 
             </form>
@@ -520,6 +515,8 @@
             return 'SP-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
         }
 
+        let autoSaveTimeout; // Variável global para o debounce do auto-save
+
         function initApp() {
             const savedDb = localStorage.getItem(DB_KEY);
             if (savedDb) {
@@ -543,6 +540,17 @@
                     dropdown.classList.add('hidden');
                 }
             });
+
+            // Configurar Auto-salvamento (disparado a cada digitação)
+            const form = document.getElementById('visitForm');
+            form.addEventListener('input', () => {
+                clearTimeout(autoSaveTimeout);
+                autoSaveTimeout = setTimeout(() => {
+                    if(document.getElementById('unitName').value.trim() !== '') {
+                        saveData(false); // Salva silenciosamente após 1.5s sem digitar
+                    }
+                }, 1500);
+            });
         }
 
         function setupNewVisit() {
@@ -550,7 +558,7 @@
             currentVisitId = generateId();
             document.getElementById('visitId').value = currentVisitId;
             document.getElementById('visitDate').valueAsDate = new Date();
-            document.getElementById('leaderName').value = 'seu nome completo'; // Pode ser alterado pelo usuário
+            document.getElementById('leaderName').value = 'Jorge'; // Pode ser alterado pelo usuário
             dynamicPhotos = [];
             renderDynamicPhotos();
             updateFooterUI();
@@ -621,24 +629,29 @@
 
         function renderDynamicPhotos() {
             const grid = document.getElementById('dynamicPhotoGrid');
-            const label = document.getElementById('noPhotosLabel');
             grid.innerHTML = '';
             
-            if(dynamicPhotos.length === 0) {
-                label.style.display = 'block';
-            } else {
-                label.style.display = 'none';
-                dynamicPhotos.forEach((photoData, index) => {
-                    const slot = document.createElement('div');
-                    slot.className = "relative h-24 bg-gray-800 border-2 border-safetyRed rounded overflow-hidden group";
-                    slot.innerHTML = `
-                        <img src="${photoData}" class="w-full h-full object-cover">
-                        <button type="button" onclick="removeDynamicPhoto(${index})" class="absolute top-1 right-1 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-lg transform transition hover:scale-110">X</button>
-                        <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-[9px] px-1 text-center truncate">Foto ${index+1}</div>
-                    `;
-                    grid.appendChild(slot);
-                });
-            }
+            // Renderizar as fotos existentes
+            dynamicPhotos.forEach((photoData, index) => {
+                const slot = document.createElement('div');
+                slot.className = "relative h-28 bg-gray-800 border-2 border-safetyRed rounded overflow-hidden group shadow-sm";
+                slot.innerHTML = `
+                    <img src="${photoData}" class="w-full h-full object-cover">
+                    <button type="button" onclick="removeDynamicPhoto(${index})" class="absolute top-1 right-1 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-lg transform transition hover:scale-110 border border-white">X</button>
+                    <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-[9px] px-1 py-0.5 text-center truncate">Foto ${index+1}</div>
+                `;
+                grid.appendChild(slot);
+            });
+
+            // Renderizar o botão lateral de "Adicionar" como se fosse um slot contínuo
+            const addSlot = document.createElement('div');
+            addSlot.className = "relative h-28 bg-gray-50 border-2 border-dashed border-safetyRed rounded flex flex-col items-center justify-center cursor-pointer hover:bg-red-50 transition shadow-sm";
+            addSlot.onclick = () => document.getElementById('photoInputDynamic').click();
+            addSlot.innerHTML = `
+                <span class="text-3xl text-safetyRed mb-1 leading-none">+</span>
+                <span class="text-[10px] text-safetyRed font-bold uppercase text-center leading-tight">Adicionar<br>Foto(s)</span>
+            `;
+            grid.appendChild(addSlot);
         }
 
         // --- LÓGICA DO BANCO DE DADOS (CRUD) ---
@@ -706,7 +719,7 @@
                 localStorage.setItem(DB_KEY, JSON.stringify(visitsDB));
             } catch(e) {
                 if(e.name === 'QuotaExceededError') {
-                    showModal("Erro de Memória", "O armazenamento local está cheio (provavelmente devido a muitas fotos em várias visitas). Exporte os backups antigos e apague do navegador.", "alert");
+                    if(showFeedback) showModal("Erro de Memória", "O armazenamento local está cheio (provavelmente devido a muitas fotos em várias visitas). Exporte os backups antigos e apague do navegador.", "alert");
                     return;
                 }
             }
@@ -716,6 +729,19 @@
             if(showFeedback) {
                 if(window.innerWidth < 768) toggleMenu(); // recolhe menu no mobile
                 showModal("Salvo", "Vistoria gravada com sucesso no banco de dados local.", "alert");
+            } else {
+                // Feedback visual muito sutil para o auto-salvamento no botão do topo
+                const btn = document.getElementById('btnSaveTop');
+                if(btn) {
+                    btn.innerHTML = '✅ Salvo';
+                    btn.classList.add('bg-green-700');
+                    btn.classList.remove('bg-green-600');
+                    setTimeout(() => {
+                        btn.innerHTML = '💾 Salvar';
+                        btn.classList.add('bg-green-600');
+                        btn.classList.remove('bg-green-700');
+                    }, 2000);
+                }
             }
         }
 
